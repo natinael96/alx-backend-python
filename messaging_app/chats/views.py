@@ -1,3 +1,141 @@
-from django.shortcuts import render
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
+from .models import Conversation, Message, User
+from .serializers import ConversationSerializer, MessageSerializer
 
-# Create your views here.
+
+class ConversationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for listing conversations and creating new ones.
+    
+    - GET /conversations/ - List all conversations the user is part of
+    - POST /conversations/ - Create a new conversation
+    - GET /conversations/{id}/ - Retrieve a specific conversation
+    """
+    serializer_class = ConversationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return conversations where the authenticated user is a participant"""
+        return Conversation.objects.filter(
+            participants=self.request.user
+        ).prefetch_related('participants', 'messages__sender').order_by('-created_at')
+    
+    def perform_create(self, serializer):
+        """Create a conversation and automatically add the current user as a participant"""
+        conversation = serializer.save()
+        # Automatically add the current user to participants if not already included
+        if self.request.user not in conversation.participants.all():
+            conversation.participants.add(self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to ensure current user is added to participant_ids"""
+        # Get participant_ids from request data
+        participant_ids = request.data.get('participant_ids', [])
+        
+        # Ensure current user is in the participant list
+        current_user_id = str(request.user.user_id)
+        if current_user_id not in participant_ids:
+            participant_ids.append(current_user_id)
+        
+        # Update request data
+        request.data['participant_ids'] = participant_ids
+        
+        return super().create(request, *args, **kwargs)
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for listing messages and sending messages to existing conversations.
+    
+    - GET /messages/ - List all messages (optionally filtered by conversation)
+    - POST /messages/ - Send a new message to a conversation
+    - GET /messages/{id}/ - Retrieve a specific message
+    """
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Return messages filtered by conversation if provided, or all user's messages"""
+        queryset = Message.objects.select_related('sender', 'conversation').order_by('-sent_at')
+        
+        # Filter by conversation if conversation_id is provided
+        conversation_id = self.request.query_params.get('conversation_id', None)
+        if conversation_id:
+            # Ensure user is a participant in the conversation
+            conversation = get_object_or_404(
+                Conversation.objects.filter(participants=self.request.user),
+                conversation_id=conversation_id
+            )
+            queryset = queryset.filter(conversation=conversation)
+        else:
+            # Only show messages from conversations the user is part of
+            user_conversations = Conversation.objects.filter(
+                participants=self.request.user
+            )
+            queryset = queryset.filter(conversation__in=user_conversations)
+        
+        return queryset
+    
+    def perform_create(self, serializer):
+        """Create a message with the current user as sender"""
+        # Get conversation_id from request data
+        conversation_id = self.request.data.get('conversation_id')
+        
+        if not conversation_id:
+            raise ValidationError({
+                'conversation_id': 'This field is required.'
+            })
+        
+        # Verify user is a participant in the conversation
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=self.request.user),
+            conversation_id=conversation_id
+        )
+        
+        # Save message with authenticated user as sender
+        serializer.save(
+            sender=self.request.user,
+            conversation=conversation
+        )
+    
+    @action(detail=False, methods=['post'], url_path='send')
+    def send_message(self, request):
+        """
+        Custom action to send a message to a conversation.
+        POST /messages/send/
+        """
+        conversation_id = request.data.get('conversation_id')
+        message_body = request.data.get('message_body')
+        
+        if not conversation_id:
+            return Response(
+                {'error': 'conversation_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not message_body:
+            return Response(
+                {'error': 'message_body is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify user is a participant in the conversation
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants=request.user),
+            conversation_id=conversation_id
+        )
+        
+        # Create the message
+        message = Message.objects.create(
+            sender=request.user,
+            conversation=conversation,
+            message_body=message_body
+        )
+        
+        serializer = self.get_serializer(message)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
