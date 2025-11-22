@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime
-from django.http import HttpResponseForbidden
+from datetime import datetime, timedelta
+from collections import defaultdict
+from django.http import HttpResponseForbidden, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
 
@@ -88,6 +89,80 @@ class RestrictAccessByTimeMiddleware(MiddlewareMixin):
                 )
         
         # Process the request if within allowed hours
+        response = self.get_response(request)
+        
+        return response
+
+
+class OffensiveLanguageMiddleware(MiddlewareMixin):
+    """
+    Middleware that limits the number of chat messages a user can send
+    within a certain time window, based on their IP address.
+    Implements rate limiting: 5 messages per minute per IP address.
+    """
+    
+    def __init__(self, get_response):
+        """
+        Initialize the middleware with rate limiting configuration.
+        """
+        self.get_response = get_response
+        # Rate limiting configuration
+        self.max_messages = 5  # Maximum messages allowed
+        self.time_window = timedelta(minutes=1)  # Time window (1 minute)
+        # Dictionary to track IP addresses and their request timestamps
+        # Format: {ip_address: [timestamp1, timestamp2, ...]}
+        self.ip_requests = defaultdict(list)
+    
+    def _get_client_ip(self, request):
+        """
+        Get the client IP address from the request.
+        """
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0]
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
+    
+    def _cleanup_old_requests(self, ip_address, current_time):
+        """
+        Remove request timestamps that are outside the time window.
+        """
+        cutoff_time = current_time - self.time_window
+        self.ip_requests[ip_address] = [
+            timestamp for timestamp in self.ip_requests[ip_address]
+            if timestamp > cutoff_time
+        ]
+    
+    def __call__(self, request):
+        """
+        Track POST requests to message endpoints and enforce rate limiting.
+        """
+        # Check if this is a POST request to message endpoints
+        if request.method == 'POST' and (
+            request.path.startswith('/api/messages/') or 
+            request.path == '/api/messages/send/'
+        ):
+            # Get client IP address
+            ip_address = self._get_client_ip(request)
+            current_time = datetime.now()
+            
+            # Clean up old requests outside the time window
+            self._cleanup_old_requests(ip_address, current_time)
+            
+            # Check if IP has exceeded the limit
+            if len(self.ip_requests[ip_address]) >= self.max_messages:
+                # Block the request and return error (429 Too Many Requests)
+                return HttpResponse(
+                    f"Rate limit exceeded. You can only send {self.max_messages} messages per {self.time_window.total_seconds()} seconds. "
+                    f"Please try again later.",
+                    status=429
+                )
+            
+            # Add current request timestamp
+            self.ip_requests[ip_address].append(current_time)
+        
+        # Process the request
         response = self.get_response(request)
         
         return response
