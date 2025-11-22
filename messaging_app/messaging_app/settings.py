@@ -128,6 +128,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'chats.User'
 
+# Pagination settings
+PAGE_SIZE = 20
+
 # Django REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -140,12 +143,16 @@ REST_FRAMEWORK = {
         'chats.permissions.IsParticipantOfConversation',
     ],
     'DEFAULT_PAGINATION_CLASS': 'chats.pagination.MessagePagination',
+    'PAGE_SIZE': PAGE_SIZE,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
 }
+
+# Import PageNumberPagination for reference
+from rest_framework.pagination import PageNumberPagination
 
 # JWT Configuration
 from datetime import timedelta
