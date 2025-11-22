@@ -2,7 +2,7 @@ from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message, User
 from .serializers import ConversationSerializer, MessageSerializer
@@ -62,7 +62,10 @@ class MessageViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Return messages filtered by conversation if provided, or all user's messages"""
-        queryset = Message.objects.select_related('sender', 'conversation').order_by('-sent_at')
+        # Use Message.objects.filter to get messages
+        queryset = Message.objects.filter(
+            conversation__participants=self.request.user
+        ).select_related('sender', 'conversation').order_by('-sent_at')
         
         # Filter by conversation if conversation_id is provided
         conversation_id = self.request.query_params.get('conversation_id', None)
@@ -72,13 +75,13 @@ class MessageViewSet(viewsets.ModelViewSet):
                 Conversation.objects.filter(participants=self.request.user),
                 conversation_id=conversation_id
             )
-            queryset = queryset.filter(conversation=conversation)
+            queryset = Message.objects.filter(conversation=conversation)
         else:
             # Only show messages from conversations the user is part of
             user_conversations = Conversation.objects.filter(
                 participants=self.request.user
             )
-            queryset = queryset.filter(conversation__in=user_conversations)
+            queryset = Message.objects.filter(conversation__in=user_conversations)
         
         return queryset
     
@@ -98,11 +101,28 @@ class MessageViewSet(viewsets.ModelViewSet):
             conversation_id=conversation_id
         )
         
+        # Check if user is participant, return 403 if not
+        if not conversation.participants.filter(user_id=self.request.user.user_id).exists():
+            raise PermissionDenied(detail="You are not a participant in this conversation", code=status.HTTP_403_FORBIDDEN)
+        
         # Save message with authenticated user as sender
         serializer.save(
             sender=self.request.user,
             conversation=conversation
         )
+    
+    def perform_update(self, serializer):
+        """Update a message - ensure user is participant"""
+        message = self.get_object()
+        if not message.conversation.participants.filter(user_id=self.request.user.user_id).exists():
+            raise PermissionDenied(detail="You are not a participant in this conversation", code=status.HTTP_403_FORBIDDEN)
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """Delete a message - ensure user is participant"""
+        if not instance.conversation.participants.filter(user_id=self.request.user.user_id).exists():
+            raise PermissionDenied(detail="You are not a participant in this conversation", code=status.HTTP_403_FORBIDDEN)
+        instance.delete()
     
     @action(detail=False, methods=['post'], url_path='send')
     def send_message(self, request):

@@ -38,12 +38,25 @@ class IsParticipantOfConversation(permissions.BasePermission):
         Check if the user has permission to access the object.
         - For messages: user must be a participant in the conversation to view, update, or delete
         - For conversations: user must be a participant
+        - PUT, PATCH, DELETE methods require participant status
         """
         # If user is admin or staff, allow access
         if request.user.is_staff or (hasattr(request.user, 'role') and request.user.role == 'admin'):
             return True
         
-        # For Message objects
+        # For PUT, PATCH, DELETE methods, ensure user is participant
+        if request.method in ['PUT', 'PATCH', 'DELETE']:
+            # For Message objects
+            if isinstance(obj, Message):
+                # User must be a participant in the conversation to update or delete
+                return obj.conversation.participants.filter(user_id=request.user.user_id).exists()
+            
+            # For Conversation objects
+            if isinstance(obj, Conversation):
+                # User must be a participant to update or delete
+                return obj.participants.filter(user_id=request.user.user_id).exists()
+        
+        # For Message objects (GET, PUT, PATCH, DELETE)
         if isinstance(obj, Message):
             # User must be a participant in the conversation to view, update, or delete
             return obj.conversation.participants.filter(user_id=request.user.user_id).exists()
