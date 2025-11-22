@@ -1,0 +1,11 @@
+2025-11-22 22:30:15.123456 - User: Anonymous - Path: /api/token/
+2025-11-22 22:30:16.234567 - User: user@example.com - Path: /api/conversations/
+2025-11-22 22:30:20.345678 - User: user@example.com - Path: /api/messages/
+2025-11-22 22:30:25.456789 - User: user@example.com - Path: /api/conversations/550e8400-e29b-41d4-a716-446655440000/
+2025-11-22 22:30:30.567890 - User: Anonymous - Path: /admin/
+2025-11-22 22:30:35.678901 - User: admin@example.com - Path: /api/messages/
+2025-11-22 22:30:40.789012 - User: user@example.com - Path: /api/messages/?page=1
+2025-11-22 22:30:45.890123 - User: user@example.com - Path: /api/conversations/
+2025-11-22 22:30:50.901234 - User: Anonymous - Path: /api/token/refresh/
+2025-11-22 22:30:55.012345 - User: user@example.com - Path: /api/messages/550e8400-e29b-41d4-a716-446655440001/
+
