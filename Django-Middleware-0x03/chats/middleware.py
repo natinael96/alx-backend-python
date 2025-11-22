@@ -167,3 +167,69 @@ class OffensiveLanguageMiddleware(MiddlewareMixin):
         
         return response
 
+
+class RolePermissionMiddleware(MiddlewareMixin):
+    """
+    Middleware that checks the user's role (admin or moderator) before allowing
+    access to specific actions. Returns 403 Forbidden if user is not admin or moderator.
+    """
+    
+    def __init__(self, get_response):
+        """
+        Initialize the middleware.
+        """
+        self.get_response = get_response
+        # Define which endpoints require admin/moderator access
+        self.restricted_paths = [
+            '/admin/',
+            '/api/admin/',
+        ]
+        # Define which HTTP methods require admin/moderator access for certain paths
+        self.restricted_methods = ['DELETE', 'PUT', 'PATCH']
+    
+    def _is_admin_or_moderator(self, user):
+        """
+        Check if user has admin or moderator role.
+        """
+        if not user or not user.is_authenticated:
+            return False
+        
+        # Check if user is staff (Django's built-in admin)
+        if user.is_staff:
+            return True
+        
+        # Check if user has admin role
+        if hasattr(user, 'role'):
+            if user.role == 'admin':
+                return True
+            # Check for moderator role if it exists
+            if hasattr(user, 'is_moderator') and user.is_moderator:
+                return True
+        
+        return False
+    
+    def __call__(self, request):
+        """
+        Check user's role and deny access if not admin or moderator for restricted actions.
+        """
+        # Check if this is a restricted path
+        is_restricted_path = any(request.path.startswith(path) for path in self.restricted_paths)
+        
+        # Check if this is a restricted method for admin actions
+        is_restricted_method = request.method in self.restricted_methods and (
+            '/api/conversations/' in request.path or 
+            '/api/messages/' in request.path
+        )
+        
+        # Apply role check for restricted paths or methods
+        if is_restricted_path or is_restricted_method:
+            if not self._is_admin_or_moderator(request.user):
+                return HttpResponseForbidden(
+                    "Access denied. This action requires admin or moderator privileges."
+                )
+        
+        # Process the request
+        response = self.get_response(request)
+        
+        return response
+
