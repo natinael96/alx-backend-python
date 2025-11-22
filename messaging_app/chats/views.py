@@ -3,10 +3,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message, User
 from .serializers import ConversationSerializer, MessageSerializer
 from .permissions import IsParticipantOfConversation, IsOwnerOrParticipant, CanSendMessage
+from .filters import MessageFilter
+from .pagination import MessagePagination
 
 
 class ConversationViewSet(viewsets.ModelViewSet):
@@ -56,9 +59,23 @@ class MessageViewSet(viewsets.ModelViewSet):
     - GET /messages/ - List all messages (optionally filtered by conversation)
     - POST /messages/ - Send a new message to a conversation
     - GET /messages/{id}/ - Retrieve a specific message
+    
+    Filtering:
+    - ?user=<user_id> - Filter by user (sender or participant)
+    - ?sender=<user_id> - Filter by sender
+    - ?participants=<user_id1,user_id2> - Filter by conversation participants
+    - ?sent_at__gte=<datetime> - Messages sent after date
+    - ?sent_at__lte=<datetime> - Messages sent before date
+    - ?conversation=<conversation_id> - Filter by conversation
     """
     serializer_class = MessageSerializer
     permission_classes = [IsParticipantOfConversation]
+    pagination_class = MessagePagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = MessageFilter
+    search_fields = ['message_body']
+    ordering_fields = ['sent_at', 'message_id']
+    ordering = ['-sent_at']
     
     def get_queryset(self):
         """Return messages filtered by conversation if provided, or all user's messages"""
