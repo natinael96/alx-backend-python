@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from .models import User, Conversation, Message
 
 
@@ -88,6 +89,21 @@ class MessageSerializer(serializers.ModelSerializer):
             'message_body': {'required': True},
         }
     
+    def validate_message_body(self, value):
+        """Validate message body"""
+        if not value or not value.strip():
+            raise ValidationError("Message body cannot be empty.")
+        return value
+    
+    def validate_conversation_id(self, value):
+        """Validate conversation ID"""
+        if value:
+            try:
+                conversation = Conversation.objects.get(conversation_id=value)
+            except Conversation.DoesNotExist:
+                raise ValidationError("Conversation does not exist.")
+        return value
+    
     def create(self, validated_data):
         """Create a new message"""
         sender_id = validated_data.pop('sender_id', None)
@@ -99,10 +115,14 @@ class MessageSerializer(serializers.ModelSerializer):
             if request and hasattr(request, 'user'):
                 sender_id = request.user.user_id
         
-        if sender_id:
-            validated_data['sender_id'] = sender_id
-        if conversation_id:
-            validated_data['conversation_id'] = conversation_id
+        if not sender_id:
+            raise ValidationError("Sender ID is required.")
+        
+        if not conversation_id:
+            raise ValidationError("Conversation ID is required.")
+        
+        validated_data['sender_id'] = sender_id
+        validated_data['conversation_id'] = conversation_id
         
         return Message.objects.create(**validated_data)
 
@@ -116,7 +136,7 @@ class ConversationSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    messages = MessageSerializer(many=True, read_only=True)
+    messages = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(read_only=True)
     
     class Meta:
@@ -128,6 +148,20 @@ class ConversationSerializer(serializers.ModelSerializer):
             'messages',
             'created_at',
         ]
+    
+    def get_messages(self, obj):
+        """Get messages for the conversation with proper nested relationships"""
+        messages = obj.messages.all().select_related('sender')
+        return MessageSerializer(messages, many=True, context=self.context).data
+    
+    def validate_participant_ids(self, value):
+        """Validate participant IDs"""
+        if value:
+            # Check if all participant IDs exist
+            existing_users = User.objects.filter(user_id__in=value)
+            if existing_users.count() != len(value):
+                raise ValidationError("One or more participant IDs are invalid.")
+        return value
     
     def create(self, validated_data):
         """Create a new conversation with participants"""
