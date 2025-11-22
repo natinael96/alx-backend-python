@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message, User
 from .serializers import ConversationSerializer, MessageSerializer
+from .permissions import IsOwnerOrParticipant, CanSendMessage
 
 
 class ConversationViewSet(viewsets.ModelViewSet):
@@ -17,7 +18,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     - GET /conversations/{id}/ - Retrieve a specific conversation
     """
     serializer_class = ConversationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOwnerOrParticipant]
     
     def get_queryset(self):
         """Return conversations where the authenticated user is a participant"""
@@ -57,7 +58,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     - GET /messages/{id}/ - Retrieve a specific message
     """
     serializer_class = MessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOwnerOrParticipant]
     
     def get_queryset(self):
         """Return messages filtered by conversation if provided, or all user's messages"""
