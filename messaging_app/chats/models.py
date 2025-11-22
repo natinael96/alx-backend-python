@@ -4,7 +4,13 @@ from django.db import models
 
 
 class User(AbstractUser):
-    """Custom User model extending AbstractUser"""
+    """
+    Custom User model extending AbstractUser.
+    
+    Inherits from AbstractUser:
+    - password: stores hashed password (password_hash in database)
+    - username, email, first_name, last_name, etc.
+    """
     user_id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -12,6 +18,7 @@ class User(AbstractUser):
         db_index=True
     )
     phone_number = models.CharField(max_length=20, null=True, blank=True)
+    # password field is inherited from AbstractUser
     
     class Role(models.TextChoices):
         GUEST = 'guest', 'Guest'
