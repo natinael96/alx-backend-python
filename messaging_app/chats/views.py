@@ -78,13 +78,16 @@ class MessageViewSet(viewsets.ModelViewSet):
     ordering = ['-sent_at']
     
     def get_queryset(self):
-        """Return messages filtered by conversation if provided, or all user's messages"""
-        # Use Message.objects.filter to get messages
+        """
+        Return messages filtered by conversation if provided, or all user's messages.
+        Ensures users can only see messages from conversations they're part of.
+        """
+        # Base queryset: only messages from conversations the user is part of
         queryset = Message.objects.filter(
             conversation__participants=self.request.user
-        ).select_related('sender', 'conversation').order_by('-sent_at')
+        ).select_related('sender', 'conversation').distinct()
         
-        # Filter by conversation if conversation_id is provided
+        # Filter by conversation if conversation_id is provided (for backward compatibility)
         conversation_id = self.request.query_params.get('conversation_id', None)
         if conversation_id:
             # Ensure user is a participant in the conversation
@@ -93,12 +96,6 @@ class MessageViewSet(viewsets.ModelViewSet):
                 conversation_id=conversation_id
             )
             queryset = Message.objects.filter(conversation=conversation)
-        else:
-            # Only show messages from conversations the user is part of
-            user_conversations = Conversation.objects.filter(
-                participants=self.request.user
-            )
-            queryset = Message.objects.filter(conversation__in=user_conversations)
         
         return queryset
     
