@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
 from .models import User, Conversation, Message
 
 
@@ -92,7 +91,7 @@ class MessageSerializer(serializers.ModelSerializer):
     def validate_message_body(self, value):
         """Validate message body"""
         if not value or not value.strip():
-            raise ValidationError("Message body cannot be empty.")
+            raise serializers.ValidationError("Message body cannot be empty.")
         return value
     
     def validate_conversation_id(self, value):
@@ -101,7 +100,7 @@ class MessageSerializer(serializers.ModelSerializer):
             try:
                 conversation = Conversation.objects.get(conversation_id=value)
             except Conversation.DoesNotExist:
-                raise ValidationError("Conversation does not exist.")
+                raise serializers.ValidationError("Conversation does not exist.")
         return value
     
     def create(self, validated_data):
@@ -116,10 +115,10 @@ class MessageSerializer(serializers.ModelSerializer):
                 sender_id = request.user.user_id
         
         if not sender_id:
-            raise ValidationError("Sender ID is required.")
+            raise serializers.ValidationError("Sender ID is required.")
         
         if not conversation_id:
-            raise ValidationError("Conversation ID is required.")
+            raise serializers.ValidationError("Conversation ID is required.")
         
         validated_data['sender_id'] = sender_id
         validated_data['conversation_id'] = conversation_id
@@ -160,7 +159,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             # Check if all participant IDs exist
             existing_users = User.objects.filter(user_id__in=value)
             if existing_users.count() != len(value):
-                raise ValidationError("One or more participant IDs are invalid.")
+                raise serializers.ValidationError("One or more participant IDs are invalid.")
         return value
     
     def create(self, validated_data):
